@@ -7,6 +7,7 @@ readonly TEST_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 "${TEST_ROOT}/unit/test_logger.sh"
 "${TEST_ROOT}/unit/test_common.sh"
 "${TEST_ROOT}/unit/test_validate_os.sh"
+"${TEST_ROOT}/unit/test_create_bench.sh"
 "${TEST_ROOT}/unit/test_state.sh"
 "${TEST_ROOT}/static/test_project.sh"
 

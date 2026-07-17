@@ -8,8 +8,8 @@ site_count() {
 
 site_apps() {
   runuser --user "$DEFAULT_DEPLOY_USER" -- env --chdir="$BENCH_PATH" \
-    HOME="/home/${DEFAULT_DEPLOY_USER}" PATH="/usr/local/bin:/usr/bin:/bin" \
-    "$BENCH_LINK" --site "$SITE_NAME" list-apps 2>/dev/null | sed '/^[[:space:]]*$/d'
+    "HOME=/home/${DEFAULT_DEPLOY_USER}" "PATH=${BENCH_COMMAND_PATH}" \
+    "$BENCH_EXECUTABLE" --site "$SITE_NAME" list-apps 2>/dev/null | sed '/^[[:space:]]*$/d'
 }
 
 module_description() { printf '%s\n' "Create and configure Frappe site"; }

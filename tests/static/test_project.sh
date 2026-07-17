@@ -29,10 +29,23 @@ shellcheck_all() {
   shellcheck --severity=warning "${files[@]}"
 }
 
+cli_version_through_symlink() {
+  local temporary_dir expected actual
+  temporary_dir="$(mktemp -d)"
+  trap 'rm -rf -- "$temporary_dir"' RETURN
+  mkdir -p "${temporary_dir}/links"
+  ln -s "../link-one" "${temporary_dir}/links/frappe-deployer"
+  ln -s "$PROJECT_ROOT/bin/frappe-deployer" "${temporary_dir}/link-one"
+  expected="frappe-deployer $(<"${PROJECT_ROOT}/VERSION")"
+  actual="$("${temporary_dir}/links/frappe-deployer" version)"
+  [[ "$actual" == "$expected" ]]
+}
+
 assert_success "all Bash files pass syntax validation" syntax_check
 assert_success "all fourteen modules implement the contract" module_contracts
 assert_success "CLI help executes" "${PROJECT_ROOT}/bin/frappe-deployer" help
 assert_success "CLI version executes" "${PROJECT_ROOT}/bin/frappe-deployer" version
+assert_success "CLI version executes through chained relative and absolute symlinks" cli_version_through_symlink
 assert_failure "unknown CLI command is rejected" "${PROJECT_ROOT}/bin/frappe-deployer" unknown-command
 
 if command -v shellcheck >/dev/null 2>&1; then

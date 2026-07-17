@@ -21,9 +21,16 @@ cleanup() {
 
 on_error() {
   local exit_code=$? line="${1:-unknown}" command="${2:-unknown}"
+  # ERR traps are inherited by command-substitution subshells because the CLI
+  # enables errtrace. Let the parent command report the failure exactly once.
+  if ((BASH_SUBSHELL > 0)); then
+    return "$exit_code"
+  fi
   trap - ERR
-  log_error "Stage '${CURRENT_STAGE_NAME}' failed at line ${line} (exit ${exit_code}): $(redact "$command")"
-  [[ -n "$LOG_FILE" ]] && log_error "See log: ${LOG_FILE}"
+  log_error "Stage '${CURRENT_STAGE_NAME}' failed at line ${line} (exit ${exit_code}): $(redact "$command")" || true
+  if [[ -n "$LOG_FILE" ]]; then
+    log_error "See log: ${LOG_FILE}" || true
+  fi
   exit "$exit_code"
 }
 

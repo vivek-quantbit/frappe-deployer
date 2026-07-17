@@ -4,6 +4,7 @@ production_settings_valid() {
   local config="${BENCH_PATH}/sites/common_site_config.json"
   [[ -f "$config" ]] || return 1
   jq -e '(.developer_mode // 0) == 0 and (.maintenance_mode // 0) == 0 and (.restart_supervisor_on_update // 0) == 1' "$config" >/dev/null
+  jq -e '(.pause_scheduler // 0) == 0' "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json" >/dev/null
 }
 
 restart_managed_processes() {
@@ -25,13 +26,13 @@ module_check() {
 }
 
 module_apply() {
+  run_bench "Apply final site migrations" --site "$SITE_NAME" migrate
+  run_bench "Clear Frappe caches" --site "$SITE_NAME" clear-cache
+  run_bench "Enable production scheduler" --site "$SITE_NAME" enable-scheduler
   run_bench "Disable Frappe developer mode" set-config --global developer_mode 0 --parse
   run_bench "Disable Frappe maintenance mode" set-config --global maintenance_mode 0 --parse
   run_bench "Enable Supervisor restart integration" set-config --global restart_supervisor_on_update 1 --parse
   run_bench "Keep systemd restart integration disabled" set-config --global restart_systemd_on_update 0 --parse
-  run_bench "Apply final site migrations" --site "$SITE_NAME" migrate
-  run_bench "Clear Frappe caches" --site "$SITE_NAME" clear-cache
-  run_bench "Enable production scheduler" --site "$SITE_NAME" enable-scheduler
 
   chown -R "$DEFAULT_DEPLOY_USER:$DEFAULT_DEPLOY_USER" "$BENCH_PATH"
   find "${BENCH_PATH}/sites" -type f -name '*site_config.json' -exec chmod 0640 {} +

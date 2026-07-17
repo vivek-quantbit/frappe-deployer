@@ -3,7 +3,7 @@
 TEMP_PATHS=()
 ACTIVE_CHILD_PID=""
 ACTIVE_CHILD_DESCRIPTION=""
-INSTALLER_STAGING_PATH=""
+BENCH_INIT_MARKER=""
 COMMAND_HEARTBEAT_SECONDS="${COMMAND_HEARTBEAT_SECONDS:-15}"
 
 require_root() {
@@ -21,8 +21,8 @@ cleanup() {
   for path in "${TEMP_PATHS[@]}"; do
     [[ -e "$path" ]] && rm -f -- "$path"
   done
-  if [[ -n "$INSTALLER_STAGING_PATH" ]] && declare -F safe_remove_staging >/dev/null; then
-    safe_remove_staging "$INSTALLER_STAGING_PATH" || true
+  if [[ -n "$BENCH_INIT_MARKER" ]] && declare -F recover_interrupted_bench >/dev/null; then
+    recover_interrupted_bench || true
   fi
 }
 
@@ -162,6 +162,11 @@ run_as_deploy_user() {
 
 bench_environment() {
   printf '%s\n' "HOME=/home/${DEFAULT_DEPLOY_USER}" "PATH=${BENCH_COMMAND_PATH}"
+}
+
+git_as_deploy_user() {
+  runuser --user "$DEFAULT_DEPLOY_USER" -- env --chdir="${BENCH_PATH}/apps/frappe" \
+    "HOME=/home/${DEFAULT_DEPLOY_USER}" PATH="/usr/local/bin:/usr/bin:/bin" git "$@"
 }
 
 run_bench_at() {

@@ -34,7 +34,7 @@ readonly -a BASE_PACKAGES=(
   libssl-dev libtiff5-dev libwebp-dev libxrender1 mariadb-client
   mariadb-server nginx pkg-config python3 python3-dev python3-pip
   python3-setuptools python3-venv redis-server software-properties-common
-  supervisor xvfb zlib1g-dev
+  xvfb zlib1g-dev
 )
 
 readonly -a PROTECTED_BENCH_PARENTS=(

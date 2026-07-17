@@ -53,14 +53,13 @@ module_apply() {
   install_wkhtmltopdf
   run_command "Enable MariaDB" systemctl enable --now mariadb
   run_command "Enable Redis" systemctl enable --now redis-server
-  run_command "Enable Supervisor" systemctl enable --now supervisor
   run_command "Enable Nginx" systemctl enable --now nginx
 }
 
 module_verify() {
   local command service
   all_packages_installed || fatal "One or more required system packages are missing."
-  for command in python3 node npm yarn redis-server mariadb nginx supervisord wkhtmltopdf git; do
+  for command in python3 node npm yarn redis-server mariadb nginx wkhtmltopdf git; do
     command -v "$command" >/dev/null 2>&1 || fatal "Required executable is missing: ${command}"
   done
   [[ "$(node --version)" == v${NODE_MAJOR}.* ]] || fatal "Node.js ${NODE_MAJOR}.x is required; found $(node --version)."
@@ -68,7 +67,7 @@ module_verify() {
     fatal "Ubuntu 22.04 Python 3.10 is required for ${FRAPPE_BRANCH}."
   yarn --version | grep -q '^1\.22\.' || fatal "Yarn 1.22.x is required."
   wkhtmltopdf --version 2>&1 | grep -q '0.12.6.*patched qt' || fatal "wkhtmltopdf 0.12.6 with patched Qt is required."
-  for service in mariadb redis-server supervisor nginx; do
+  for service in mariadb redis-server nginx; do
     systemctl is-active --quiet "$service" || fatal "Service is not active: ${service}"
     systemctl is-enabled --quiet "$service" || fatal "Service is not enabled: ${service}"
   done

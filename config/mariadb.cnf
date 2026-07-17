@@ -1,0 +1,13 @@
+# Managed by Frappe Deployer. Local edits will be replaced.
+[server]
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+skip-character-set-client-handshake
+
+[mariadb]
+innodb-file-per-table = 1
+innodb-default-row-format = dynamic
+
+[client]
+default-character-set = utf8mb4
+

@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+readonly PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+# shellcheck source=../lib/constants.sh
+source "${PROJECT_ROOT}/lib/constants.sh"
+source "${PROJECT_ROOT}/lib/logger.sh"
+source "${PROJECT_ROOT}/lib/progress.sh"
+source "${PROJECT_ROOT}/lib/validation.sh"
+source "${PROJECT_ROOT}/lib/state.sh"
+source "${PROJECT_ROOT}/lib/common.sh"
+
+BENCH_NAME=""
+SITE_NAME=""
+DB_ROOT_PASSWORD="${FRAPPE_DB_ROOT_PASSWORD:-}"
+ADMIN_PASSWORD="${FRAPPE_ADMIN_PASSWORD:-}"
+TIMEZONE=""
+BENCH_PARENT="$DEFAULT_BENCH_PARENT"
+BENCH_PATH=""
+SUPERVISOR_CONFIG_TARGET=""
+NGINX_CONFIG_TARGET=""
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  frappe-deployer deploy --bench-name NAME --site-name HOSTNAME \
+    --timezone ZONE [--bench-path PATH] [password options]
+  frappe-deployer verify
+  frappe-deployer version
+  frappe-deployer help
+
+Password options:
+  --db-root-password VALUE    MariaDB root password (prefer environment variable)
+  --admin-password VALUE      Frappe Administrator password (prefer environment variable)
+
+Environment variables:
+  FRAPPE_DB_ROOT_PASSWORD
+  FRAPPE_ADMIN_PASSWORD
+USAGE
+}
+
+parse_deploy_args() {
+  while (($#)); do
+    case "$1" in
+      --bench-name) [[ $# -ge 2 ]] || fatal "Missing value for $1"; BENCH_NAME="$2"; shift 2 ;;
+      --site-name) [[ $# -ge 2 ]] || fatal "Missing value for $1"; SITE_NAME="$2"; shift 2 ;;
+      --db-root-password) [[ $# -ge 2 ]] || fatal "Missing value for $1"; DB_ROOT_PASSWORD="$2"; shift 2 ;;
+      --admin-password) [[ $# -ge 2 ]] || fatal "Missing value for $1"; ADMIN_PASSWORD="$2"; shift 2 ;;
+      --timezone) [[ $# -ge 2 ]] || fatal "Missing value for $1"; TIMEZONE="$2"; shift 2 ;;
+      --bench-path) [[ $# -ge 2 ]] || fatal "Missing value for $1"; BENCH_PARENT="$2"; shift 2 ;;
+      --help|-h) usage; exit 0 ;;
+      *) fatal "Unknown option: $1" ;;
+    esac
+  done
+}
+
+require_deploy_inputs() {
+  [[ -n "$BENCH_NAME" ]] || fatal "--bench-name is required."
+  [[ -n "$SITE_NAME" ]] || fatal "--site-name is required."
+  [[ -n "$TIMEZONE" ]] || fatal "--timezone is required."
+  [[ -n "$DB_ROOT_PASSWORD" ]] || fatal "Database root password is required."
+  [[ -n "$ADMIN_PASSWORD" ]] || fatal "Site administrator password is required."
+}
+
+preflight_os() {
+  [[ -r /etc/os-release ]] || fatal "Cannot read /etc/os-release."
+  local detected_id detected_version
+  detected_id="$(. /etc/os-release; printf '%s' "${ID:-}")"
+  detected_version="$(. /etc/os-release; printf '%s' "${VERSION_ID:-}")"
+  [[ "$detected_id" == "$SUPPORTED_OS_ID" && "$detected_version" == "$SUPPORTED_OS_VERSION" ]] ||
+    fatal "Only Ubuntu ${SUPPORTED_OS_VERSION} is supported; detected ${detected_id:-unknown} ${detected_version:-unknown}."
+  [[ "$(uname -m)" == "x86_64" ]] || fatal "Only x86_64 is supported in Phase 1."
+}
+
+persist_deployment_identity() {
+  local key expected existing
+  while IFS='|' read -r key expected; do
+    existing="$(state_get "$key")"
+    [[ -z "$existing" || "$existing" == "$expected" ]] ||
+      fatal "This server is already managed for a different ${key}: ${existing}"
+    state_set "$key" "$expected"
+  done <<EOF
+bench_name|${BENCH_NAME}
+bench_path|${BENCH_PATH}
+site_name|${SITE_NAME}
+timezone|${TIMEZONE}
+frappe_branch|${FRAPPE_BRANCH}
+EOF
+}
+
+deploy() {
+  parse_deploy_args "$@"
+  register_secret "$DB_ROOT_PASSWORD"
+  register_secret "$ADMIN_PASSWORD"
+  require_deploy_inputs
+  validate_inputs
+  BENCH_PATH="${BENCH_PARENT}/${BENCH_NAME}"
+  SUPERVISOR_CONFIG_TARGET="/etc/supervisor/conf.d/frappe-deployer-${BENCH_NAME}.conf"
+  NGINX_CONFIG_TARGET="/etc/nginx/conf.d/frappe-deployer-${BENCH_NAME}.conf"
+  require_root
+  preflight_os
+  log_init "$DEFAULT_LOG_DIR"
+  state_init "$DEFAULT_STATE_DIR"
+  acquire_lock
+  install_traps
+  persist_deployment_identity
+
+  log_info "Frappe Deployer ${APP_VERSION}"
+  log_info "Plan: bench=${BENCH_NAME}, site=${SITE_NAME}, path=${BENCH_PARENT}/${BENCH_NAME}, timezone=${TIMEZONE}"
+  run_modules 14
+  log_success "Frappe production deployment completed and verified."
+}
+
+verify_deployment() {
+  (($# == 0)) || fatal "The verify command does not accept options."
+  require_root
+  log_init "$DEFAULT_LOG_DIR"
+  state_init "$DEFAULT_STATE_DIR"
+  acquire_lock
+  install_traps
+
+  BENCH_NAME="$(state_get bench_name)"
+  BENCH_PATH="$(state_get bench_path)"
+  SITE_NAME="$(state_get site_name)"
+  TIMEZONE="$(state_get timezone)"
+  [[ -n "$BENCH_NAME" && -n "$BENCH_PATH" && -n "$SITE_NAME" ]] ||
+    fatal "No completed Frappe Deployer identity was found. Run deploy first."
+  BENCH_PARENT="$(dirname "$BENCH_PATH")"
+  SUPERVISOR_CONFIG_TARGET="/etc/supervisor/conf.d/frappe-deployer-${BENCH_NAME}.conf"
+  NGINX_CONFIG_TARGET="/etc/nginx/conf.d/frappe-deployer-${BENCH_NAME}.conf"
+
+  stage_start "Verify complete production deployment"
+  # shellcheck source=../modules/13_verify_deployment.sh
+  source "${PROJECT_ROOT}/modules/13_verify_deployment.sh"
+  module_verify
+  stage_success
+  unset -f module_description module_check module_apply module_verify
+  # shellcheck source=../modules/14_print_summary.sh
+  source "${PROJECT_ROOT}/modules/14_print_summary.sh"
+  module_verify
+}
+
+run_modules() {
+  local limit="${1:?module limit required}" module stage_id description
+  local -a modules
+  mapfile -t modules < <(find "${PROJECT_ROOT}/modules" -maxdepth 1 -type f -name '[0-9][0-9]_*.sh' | sort)
+  ((${#modules[@]} >= limit)) || fatal "Expected ${limit} deployment modules; found ${#modules[@]}."
+  for module in "${modules[@]:0:limit}"; do
+    unset -f module_description module_check module_apply module_verify 2>/dev/null || true
+    # shellcheck source=/dev/null
+    source "$module"
+    declare -F module_description module_check module_apply module_verify >/dev/null || fatal "Invalid module contract: ${module}"
+    stage_id="$(basename "$module" | cut -d_ -f1)"
+    description="$(module_description)"
+    stage_start "$description"
+    if module_check; then
+      module_verify
+      stage_skip
+    else
+      module_apply
+      module_verify
+      mark_stage_verified "$stage_id"
+      stage_success
+    fi
+  done
+}
+
+main() {
+  local command="${1:-help}"
+  shift || true
+  case "$command" in
+    deploy) deploy "$@" ;;
+    verify) verify_deployment "$@" ;;
+    version) printf '%s %s\n' "$APP_NAME" "$APP_VERSION" ;;
+    help|-h|--help) usage ;;
+    *) fatal "Unknown command: ${command}" ;;
+  esac
+}
+
+main "$@"

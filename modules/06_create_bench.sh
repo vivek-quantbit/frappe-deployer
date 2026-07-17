@@ -8,6 +8,8 @@ bench_layout_valid() {
   [[ "$apps" == frappe ]] || return 1
 }
 
+bench_layout_valid() { bench_layout_valid_at "$BENCH_PATH"; }
+
 module_description() { printf '%s\n' "Create Frappe bench"; }
 
 bench_target_is_expected() {

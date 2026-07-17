@@ -30,5 +30,20 @@ printf 'second\n' >"$source_file"
 assert_success "atomic install replaces changed content" atomic_install_file "$source_file" "$target_file" 0644
 assert_equal "atomic replacement content matches" second "$(<"$target_file")"
 
-finish_tests
+error_output="${temporary_dir}/error-output"
+set +e
+bash -Eeuo pipefail -c '
+  source "$1/lib/logger.sh"
+  source "$1/lib/common.sh"
+  CURRENT_STAGE_NAME="Disk validation"
+  register_secret "super-secret"
+  install_traps
+  result="$(bash -c "exit 7" super-secret)"
+' _ "$PROJECT_ROOT" >"$error_output" 2>&1
+error_status=$?
+set -e
+assert_equal "command-substitution failure preserves exit status" 7 "$error_status"
+assert_equal "command-substitution failure is reported once" 1 "$(grep -c "Stage 'Disk validation' failed" "$error_output")"
+assert_failure "top-level error report redacts registered secrets" grep -q super-secret "$error_output"
 
+finish_tests

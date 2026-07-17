@@ -63,7 +63,14 @@ module_apply() {
   if atomic_install_file "$MARIADB_CONFIG_SOURCE" "$MARIADB_CONFIG_TARGET" 0644 root root; then
     changed=1
   fi
-  mariadbd --verbose --help >>"$LOG_FILE" 2>&1 || fatal "MariaDB rejected the managed configuration."
+  local mariadb_diagnostic
+  mariadb_diagnostic="$(mktemp)"
+  register_temp_path "$mariadb_diagnostic"
+  if ! mariadbd --verbose --help >"$mariadb_diagnostic" 2>&1; then
+    log_error "MariaDB configuration diagnostic follows:"
+    cat "$mariadb_diagnostic" >>"$LOG_FILE"
+    fatal "MariaDB rejected the managed configuration."
+  fi
   if ((changed)); then
     run_command "Restart MariaDB with Frappe configuration" systemctl restart mariadb
   else

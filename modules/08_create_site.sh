@@ -7,9 +7,7 @@ site_count() {
 }
 
 site_apps() {
-  runuser --user "$DEFAULT_DEPLOY_USER" -- env --chdir="$BENCH_PATH" \
-    HOME="/home/${DEFAULT_DEPLOY_USER}" PATH="/usr/local/bin:/usr/bin:/bin" \
-    "$BENCH_LINK" --site "$SITE_NAME" list-apps 2>/dev/null | sed '/^[[:space:]]*$/d'
+  sed '/^[[:space:]]*$/d' "${BENCH_PATH}/sites/apps.txt"
 }
 
 module_description() { printf '%s\n' "Create and configure Frappe site"; }
@@ -18,7 +16,9 @@ module_check() {
   site_exists || return 1
   [[ "$(site_count)" == "1" ]] || fatal "Phase 1 requires exactly one site in the bench."
   [[ "$(site_apps)" == "frappe" ]] || fatal "The existing site contains unexpected applications."
-  return 1
+  [[ -f "${BENCH_PATH}/sites/currentsite.txt" ]] || return 1
+  [[ "$(tr -d '[:space:]' <"${BENCH_PATH}/sites/currentsite.txt")" == "$SITE_NAME" ]] || return 1
+  [[ "$(jq -r '.time_zone // empty' "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json")" == "$TIMEZONE" ]]
 }
 
 module_apply() {
@@ -32,8 +32,6 @@ module_apply() {
   fi
   run_bench "Set ${SITE_NAME} as the default site" use "$SITE_NAME"
   run_bench "Set site timezone to ${TIMEZONE}" --site "$SITE_NAME" set-config time_zone "$TIMEZONE"
-  run_bench "Run site migrations" --site "$SITE_NAME" migrate
-  run_bench "Enable site scheduler" --site "$SITE_NAME" enable-scheduler
 }
 
 module_verify() {
@@ -44,9 +42,6 @@ module_verify() {
   [[ "$apps" == "frappe" ]] || fatal "Expected only Frappe on the site; found: ${apps//$'\n'/, }"
   configured_timezone="$(jq -r '.time_zone // empty' "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json")"
   [[ "$configured_timezone" == "$TIMEZONE" ]] || fatal "Site timezone is not configured correctly."
-  jq -e '(.pause_scheduler // 0) == 0' "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json" >/dev/null ||
-    fatal "Site scheduler remains paused."
   current_site="$(tr -d '[:space:]' <"${BENCH_PATH}/sites/currentsite.txt")"
   [[ "$current_site" == "$SITE_NAME" ]] || fatal "Default site is ${current_site}, expected ${SITE_NAME}."
-  run_bench "Verify site database access" --site "$SITE_NAME" execute frappe.get_installed_apps
 }

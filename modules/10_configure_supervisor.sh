@@ -33,6 +33,7 @@ ping_bench_redis() {
 module_description() { printf '%s\n' "Configure Supervisor production processes"; }
 
 module_check() {
+  dpkg-query -W -f='${db:Status-Abbrev}' supervisor 2>/dev/null | grep -q '^ii ' || return 1
   [[ -f "$(supervisor_source_config)" && -f "$SUPERVISOR_CONFIG_TARGET" ]] || return 1
   cmp -s "$(supervisor_source_config)" "$SUPERVISOR_CONFIG_TARGET" || return 1
   systemctl is-active --quiet supervisor || return 1
@@ -42,6 +43,9 @@ module_check() {
 
 module_apply() {
   local source changed=0 backup="" had_existing=0
+  export DEBIAN_FRONTEND=noninteractive
+  run_command "Install Supervisor" apt-get install -y --no-install-recommends supervisor
+  command -v supervisord >/dev/null 2>&1 && command -v supervisorctl >/dev/null 2>&1 || fatal "Supervisor installation failed."
   run_bench "Generate Supervisor production configuration" setup supervisor
   source="$(supervisor_source_config)"
   [[ -s "$source" ]] || fatal "Bench did not generate Supervisor configuration."
@@ -68,6 +72,7 @@ module_apply() {
 }
 
 module_verify() {
+  dpkg-query -W -f='${db:Status-Abbrev}' supervisor 2>/dev/null | grep -q '^ii ' || fatal "Supervisor package is not installed."
   systemctl is-active --quiet supervisor || fatal "Supervisor service is not active."
   systemctl is-enabled --quiet supervisor || fatal "Supervisor service is not enabled."
   managed_processes_running || fatal "One or more managed Frappe processes are not running."

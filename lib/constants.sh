@@ -25,6 +25,7 @@ readonly MARIADB_CONFIG_TARGET="/etc/mysql/mariadb.conf.d/60-frappe-deployer.cnf
 readonly BENCH_VENV="/opt/frappe-deployer/bench-venv"
 readonly BENCH_EXECUTABLE="${BENCH_VENV}/bin/bench"
 readonly BENCH_LINK="/usr/local/bin/bench"
+readonly BENCH_COMMAND_PATH="${BENCH_VENV}/bin:/usr/local/bin:/usr/bin:/bin"
 
 readonly -a BASE_PACKAGES=(
   apt-transport-https build-essential ca-certificates cron curl fontconfig
@@ -33,7 +34,7 @@ readonly -a BASE_PACKAGES=(
   libssl-dev libtiff5-dev libwebp-dev libxrender1 mariadb-client
   mariadb-server nginx pkg-config python3 python3-dev python3-pip
   python3-setuptools python3-venv redis-server software-properties-common
-  supervisor xvfb zlib1g-dev
+  xvfb zlib1g-dev
 )
 
 readonly -a PROTECTED_BENCH_PARENTS=(

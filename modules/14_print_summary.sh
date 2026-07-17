@@ -6,7 +6,7 @@ module_apply() { :; }
 
 module_verify() {
   local frappe_version bench_version server_ip
-  frappe_version="$(git -C "${BENCH_PATH}/apps/frappe" describe --tags --always 2>/dev/null || printf unknown)"
+  frappe_version="$(git_as_deploy_user describe --tags --always 2>/dev/null || printf unknown)"
   bench_version="$($BENCH_LINK --version 2>/dev/null || printf unknown)"
   server_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   printf '\nFrappe deployment completed successfully\n'
@@ -25,4 +25,3 @@ module_verify() {
   printf '  sudo supervisorctl status\n'
   printf '  sudo -u %s -H env --chdir=%s bench --site %s migrate\n\n' "$DEFAULT_DEPLOY_USER" "$BENCH_PATH" "$SITE_NAME"
 }
-

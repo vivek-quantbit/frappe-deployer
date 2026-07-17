@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 frappe_branch_valid() {
-  [[ "$(git -C "${BENCH_PATH}/apps/frappe" branch --show-current)" == "$FRAPPE_BRANCH" ]]
+  [[ "$(git_as_deploy_user branch --show-current)" == "$FRAPPE_BRANCH" ]]
 }
 
 frappe_only_app() {
@@ -34,7 +34,7 @@ module_verify() {
   local remote
   frappe_branch_valid || fatal "Frappe branch validation failed."
   frappe_only_app || fatal "Unexpected application found in bench."
-  remote="$(git -C "${BENCH_PATH}/apps/frappe" remote get-url upstream 2>/dev/null || git -C "${BENCH_PATH}/apps/frappe" remote get-url origin)"
+  remote="$(git_as_deploy_user remote get-url upstream 2>/dev/null || git_as_deploy_user remote get-url origin)"
   [[ "$remote" == *"frappe/frappe"* ]] || fatal "Unexpected Frappe Git remote: ${remote}"
   "${BENCH_PATH}/env/bin/python" -c 'import frappe' >/dev/null 2>&1 || fatal "Frappe cannot be imported in the bench environment."
   [[ -d "${BENCH_PATH}/sites/assets/frappe" || -L "${BENCH_PATH}/sites/assets/frappe" ]] || fatal "Frappe assets are missing."

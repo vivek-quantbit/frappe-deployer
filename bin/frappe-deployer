@@ -2,7 +2,23 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+resolve_script_path() {
+  local source="${BASH_SOURCE[0]}" directory target
+  while [[ -L "$source" ]]; do
+    directory="$(cd -P -- "$(dirname -- "$source")" && pwd)"
+    target="$(readlink -- "$source")"
+    if [[ "$target" == /* ]]; then
+      source="$target"
+    else
+      source="${directory}/${target}"
+    fi
+  done
+  directory="$(cd -P -- "$(dirname -- "$source")" && pwd)"
+  printf '%s/%s\n' "$directory" "$(basename -- "$source")"
+}
+
+readonly SCRIPT_PATH="$(resolve_script_path)"
+readonly PROJECT_ROOT="$(cd -- "$(dirname -- "$SCRIPT_PATH")/.." && pwd -P)"
 
 # shellcheck source=../lib/constants.sh
 source "${PROJECT_ROOT}/lib/constants.sh"

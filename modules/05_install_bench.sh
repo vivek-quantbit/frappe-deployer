@@ -10,9 +10,10 @@ module_description() { printf '%s\n' "Create deployment user and install Bench C
 
 module_check() {
   deployment_user_valid || return 1
-  [[ -x "$BENCH_EXECUTABLE" && -L "$BENCH_LINK" ]] || return 1
+  [[ -x "$BENCH_EXECUTABLE" && -x "${BENCH_VENV}/bin/uv" && -L "$BENCH_LINK" ]] || return 1
   [[ "$(readlink -f "$BENCH_LINK")" == "$BENCH_EXECUTABLE" ]] || return 1
-  runuser --user "$DEFAULT_DEPLOY_USER" -- "$BENCH_LINK" --version >/dev/null 2>&1
+  runuser --user "$DEFAULT_DEPLOY_USER" -- env "PATH=${BENCH_COMMAND_PATH}" \
+    bash -c 'bench --version >/dev/null && uv --version >/dev/null'
 }
 
 create_deployment_user() {
@@ -40,9 +41,11 @@ module_verify() {
   local version
   deployment_user_valid || fatal "Deployment user validation failed."
   [[ -x "$BENCH_EXECUTABLE" ]] || fatal "Bench executable was not installed."
+  [[ -x "${BENCH_VENV}/bin/uv" ]] || fatal "uv was not installed in the Bench environment."
   [[ "$(readlink -f "$BENCH_LINK")" == "$BENCH_EXECUTABLE" ]] || fatal "Global Bench link is incorrect."
-  version="$(runuser --user "$DEFAULT_DEPLOY_USER" -- "$BENCH_LINK" --version 2>&1)"
+  version="$(runuser --user "$DEFAULT_DEPLOY_USER" -- env "PATH=${BENCH_COMMAND_PATH}" bench --version 2>&1)"
   [[ "$version" =~ ^[0-9]+\.[0-9]+ ]] || fatal "Bench CLI returned an invalid version: ${version}"
+  runuser --user "$DEFAULT_DEPLOY_USER" -- env "PATH=${BENCH_COMMAND_PATH}" uv --version >/dev/null 2>&1 ||
+    fatal "uv cannot execute as ${DEFAULT_DEPLOY_USER}."
   log_success "Bench CLI ${version} is available to ${DEFAULT_DEPLOY_USER}"
 }
-

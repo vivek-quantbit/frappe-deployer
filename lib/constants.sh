@@ -25,6 +25,7 @@ readonly MARIADB_CONFIG_TARGET="/etc/mysql/mariadb.conf.d/60-frappe-deployer.cnf
 readonly BENCH_VENV="/opt/frappe-deployer/bench-venv"
 readonly BENCH_EXECUTABLE="${BENCH_VENV}/bin/bench"
 readonly BENCH_LINK="/usr/local/bin/bench"
+readonly BENCH_COMMAND_PATH="${BENCH_VENV}/bin:/usr/local/bin:/usr/bin:/bin"
 
 readonly -a BASE_PACKAGES=(
   apt-transport-https build-essential ca-certificates cron curl fontconfig

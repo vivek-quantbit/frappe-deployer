@@ -36,7 +36,7 @@ verify_redis_endpoints() {
 verify_site() {
   local apps current_site scheduler_paused
   [[ -f "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json" ]] || fatal "Site configuration is missing."
-  apps="$(runuser --user "$DEFAULT_DEPLOY_USER" -- env --chdir="$BENCH_PATH" HOME="/home/${DEFAULT_DEPLOY_USER}" PATH="/usr/local/bin:/usr/bin:/bin" "$BENCH_LINK" --site "$SITE_NAME" list-apps 2>/dev/null | sed '/^[[:space:]]*$/d')"
+  apps="$(runuser --user "$DEFAULT_DEPLOY_USER" -- env --chdir="$BENCH_PATH" "HOME=/home/${DEFAULT_DEPLOY_USER}" "PATH=${BENCH_COMMAND_PATH}" "$BENCH_EXECUTABLE" --site "$SITE_NAME" list-apps 2>/dev/null | sed '/^[[:space:]]*$/d')"
   [[ "$apps" == "frappe" ]] || fatal "Expected only Frappe; found ${apps//$'\n'/, }."
   current_site="$(tr -d '[:space:]' <"${BENCH_PATH}/sites/currentsite.txt")"
   [[ "$current_site" == "$SITE_NAME" ]] || fatal "Default site does not match ${SITE_NAME}."
@@ -68,4 +68,3 @@ module_verify() {
   "${BENCH_PATH}/env/bin/python" -c 'import frappe' >/dev/null 2>&1 || fatal "Frappe import verification failed."
   verification_pass "Frappe Python environment"
 }
-

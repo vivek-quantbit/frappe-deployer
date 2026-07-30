@@ -192,9 +192,6 @@ run_sensitive_bench() {
 }
 
 bench_default_site() {
-  jq -er '.default_site // empty' "${BENCH_PATH}/sites/common_site_config.json" 2>/dev/null
-}
-
-bench_default_site() {
-  jq -er '.default_site // empty' "${BENCH_PATH}/sites/common_site_config.json" 2>/dev/null
+  jq -er '.default_site // empty' \
+    "${BENCH_PATH}/sites/common_site_config.json" 2>/dev/null
 }

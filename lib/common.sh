@@ -19,7 +19,7 @@ register_temp_path() { TEMP_PATHS+=("${1:?temporary path required}"); }
 cleanup() {
   local path
   for path in "${TEMP_PATHS[@]}"; do
-    [[ -e "$path" ]] && rm -f -- "$path"
+    [[ ! -e "$path" ]] || { if [[ -d "$path" ]]; then rm -rf -- "$path"; else rm -f -- "$path"; fi; }
   done
   if [[ -n "$BENCH_INIT_MARKER" ]] && declare -F recover_interrupted_bench >/dev/null; then
     recover_interrupted_bench || true
@@ -174,7 +174,7 @@ run_bench_at() {
   shift 2
   run_command "$description" runuser --user "$DEFAULT_DEPLOY_USER" -- \
     env --chdir="$bench_path" "HOME=/home/${DEFAULT_DEPLOY_USER}" \
-    "PATH=${BENCH_COMMAND_PATH}" "$BENCH_EXECUTABLE" "$@"
+    "PATH=${BENCH_COMMAND_PATH}" "$BENCH_EXECUTABLE" "$@" </dev/null
 }
 
 run_bench() {
@@ -188,7 +188,11 @@ run_sensitive_bench() {
   shift
   run_sensitive_command "$description" runuser --user "$DEFAULT_DEPLOY_USER" -- \
     env --chdir="$BENCH_PATH" "HOME=/home/${DEFAULT_DEPLOY_USER}" \
-    "PATH=${BENCH_COMMAND_PATH}" "$BENCH_EXECUTABLE" "$@"
+    "PATH=${BENCH_COMMAND_PATH}" "$BENCH_EXECUTABLE" "$@" </dev/null
+}
+
+bench_default_site() {
+  jq -er '.default_site // empty' "${BENCH_PATH}/sites/common_site_config.json" 2>/dev/null
 }
 
 bench_default_site() {

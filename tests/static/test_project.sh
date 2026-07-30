@@ -47,6 +47,10 @@ assert_success "CLI help executes" "${PROJECT_ROOT}/bin/frappe-deployer" help
 assert_success "CLI version executes" "${PROJECT_ROOT}/bin/frappe-deployer" version
 assert_success "CLI version executes through chained relative and absolute symlinks" cli_version_through_symlink
 assert_failure "unknown CLI command is rejected" "${PROJECT_ROOT}/bin/frappe-deployer" unknown-command
+assert_success "Supervisor generation is non-interactive" grep -Eq 'setup supervisor --yes' "${PROJECT_ROOT}/modules/10_configure_supervisor.sh"
+assert_success "Nginx generation is non-interactive" grep -Eq 'setup nginx --yes' "${PROJECT_ROOT}/modules/11_configure_nginx.sh"
+assert_failure "interactive Supervisor or Nginx setup is absent" grep -RPn 'setup (supervisor|nginx)(?! --yes)' "${PROJECT_ROOT}/modules"
+assert_success "Bench commands receive no interactive stdin" grep -q '"$BENCH_EXECUTABLE" "$@" </dev/null' "${PROJECT_ROOT}/lib/common.sh"
 
 if command -v shellcheck >/dev/null 2>&1; then
   assert_success "ShellCheck passes" shellcheck_all

@@ -18,7 +18,7 @@ exercise_supervisor_apply() {
   REREAD_COUNT_FILE="${root}/reread-count"
   mkdir -p "${BENCH_PATH}/config" "${root}/bin"
   : >"$LOG_FILE"; : >"$CALLS_FILE"; printf '0\n' >"$REREAD_COUNT_FILE"
-  printf '#!/usr/bin/env bash\nprintf "production:%%s RUNNING\\n" {1..5}\n' >"${root}/bin/supervisorctl"
+  printf '#!/usr/bin/env bash\nprintf "production:%%s RUNNING\\n" {1..4}\nprintf "production:worker FATAL\\n"\nprintf "other-production:worker FATAL\\n"\n' >"${root}/bin/supervisorctl"
   printf '#!/usr/bin/env bash\nexit 0\n' >"${root}/bin/supervisord"
   chmod +x "${root}/bin/supervisorctl" "${root}/bin/supervisord"
   PATH="${root}/bin:${PATH}"
@@ -54,6 +54,9 @@ assert_success "valid Supervisor configuration is applied" exercise_supervisor_a
 assert_success "Supervisor starts before reread" awk '/Enable and start Supervisor/{started=1} /Validate Supervisor process configuration/{exit !started}' "$success_root/calls"
 assert_success "successful validation runs reread before update" awk '/Validate Supervisor process configuration/{reread=NR} /Apply Supervisor process changes/{exit !(reread && reread < NR)}' "$success_root/calls"
 assert_success "reread output is captured in deployment log" grep -q 'reread output 1' "$success_root/deploy.log"
+assert_success "existing FATAL process is retried" grep -q 'Start Supervisor process production:worker (FATAL)' "$success_root/calls"
+assert_success "running managed processes are restarted" grep -q 'Restart Supervisor process production:1' "$success_root/calls"
+assert_failure "unrelated Supervisor processes are untouched" grep -q 'other-production' "$success_root/calls"
 
 printf 'previous configuration\n' >"$existing_failure_root/frappe.conf"
 assert_failure "failed reread rejects an existing target" exercise_supervisor_apply "$existing_failure_root" 1

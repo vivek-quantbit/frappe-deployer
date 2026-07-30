@@ -2,12 +2,30 @@
 
 supervisor_source_config() { printf '%s\n' "${BENCH_PATH}/config/supervisor.conf"; }
 
+managed_supervisor_processes() {
+  supervisorctl status 2>/dev/null | awk -v prefix="$BENCH_NAME" '$1 ~ ("^" prefix "([:-]|$)") {print $1, $2}'
+}
+
 managed_processes_running() {
   local output managed_count bad_count
-  output="$(supervisorctl status 2>/dev/null || true)"
-  managed_count="$(grep -c "${BENCH_NAME}" <<<"$output" || true)"
-  bad_count="$(grep "${BENCH_NAME}" <<<"$output" | grep -vc 'RUNNING' || true)"
+  output="$(managed_supervisor_processes || true)"
+  managed_count="$(sed '/^[[:space:]]*$/d' <<<"$output" | wc -l)"
+  bad_count="$(awk '$2 != "RUNNING" {count++} END {print count + 0}' <<<"$output")"
   ((managed_count >= 5 && bad_count == 0))
+}
+
+recover_managed_processes() {
+  local process state count=0
+  while read -r process state; do
+    [[ -n "$process" ]] || continue
+    count=$((count + 1))
+    if [[ "$state" == RUNNING ]]; then
+      run_command "Restart Supervisor process ${process}" supervisorctl restart "$process"
+    else
+      run_command "Start Supervisor process ${process} (${state})" supervisorctl start "$process"
+    fi
+  done < <(managed_supervisor_processes)
+  ((count > 0)) || return 1
 }
 
 wait_for_managed_processes() {
@@ -47,7 +65,7 @@ module_apply() {
   run_command "Install Supervisor" apt-get install -y --no-install-recommends supervisor
   command -v supervisord >/dev/null 2>&1 && command -v supervisorctl >/dev/null 2>&1 || fatal "Supervisor installation failed."
   run_command "Enable and start Supervisor" systemctl enable --now supervisor
-  run_bench "Generate Supervisor production configuration" setup supervisor
+  run_bench "Generate Supervisor production configuration" setup supervisor --yes
   source="$(supervisor_source_config)"
   [[ -s "$source" ]] || fatal "Bench did not generate Supervisor configuration."
   if [[ -f "$SUPERVISOR_CONFIG_TARGET" ]]; then
@@ -71,6 +89,7 @@ module_apply() {
   if ((changed)); then
     run_command "Apply Supervisor process changes" supervisorctl update
   fi
+  recover_managed_processes || fatal "No Supervisor processes matched the validated Bench prefix ${BENCH_NAME}."
   wait_for_managed_processes || fatal "One or more Frappe Supervisor processes failed to reach RUNNING state."
 }
 

@@ -3,7 +3,11 @@
 supervisor_source_config() { printf '%s\n' "${BENCH_PATH}/config/supervisor.conf"; }
 
 managed_supervisor_processes() {
-  supervisorctl status 2>/dev/null | awk -v prefix="$BENCH_NAME" '$1 ~ ("^" prefix "([:-]|$)") {print $1, $2}'
+  supervisorctl status 2>/dev/null | awk -v prefix="$BENCH_NAME" '
+    index($1, prefix ":") == 1 || index($1, prefix "-") == 1 {
+      printf "%s\t%s\n", $1, $2
+    }
+  '
 }
 
 managed_processes_running() {
@@ -15,16 +19,20 @@ managed_processes_running() {
 }
 
 recover_managed_processes() {
-  local process state count=0
-  while read -r process state; do
+  local output process state count=0
+  output="$(managed_supervisor_processes)" || return
+  while IFS=$'\t' read -r process state; do
     [[ -n "$process" ]] || continue
+    [[ "$process" == "${BENCH_NAME}:"* || "$process" == "${BENCH_NAME}-"* ]] || return 1
+    [[ "$process" =~ ^[[:alnum:]_][[:alnum:]_.:-]*$ ]] || return 1
+    [[ "$state" =~ ^(RUNNING|STOPPED|EXITED|FATAL|BACKOFF|STARTING|UNKNOWN)$ ]] || return 1
     count=$((count + 1))
-    if [[ "$state" == RUNNING ]]; then
-      run_command "Restart Supervisor process ${process}" supervisorctl restart "$process"
+    if [[ "$state" == RUNNING || "$state" == STARTING ]]; then
+      run_command "Restart Supervisor process ${process}" supervisorctl restart "$process" || return
     else
-      run_command "Start Supervisor process ${process} (${state})" supervisorctl start "$process"
+      run_command "Start Supervisor process ${process} (${state})" supervisorctl start "$process" || return
     fi
-  done < <(managed_supervisor_processes)
+  done <<<"$output"
   ((count > 0)) || return 1
 }
 

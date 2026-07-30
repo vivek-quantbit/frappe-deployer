@@ -11,6 +11,26 @@ syntax_check() {
   )
 }
 
+duplicate_production_functions() {
+  local file
+  while IFS= read -r -d '' file; do
+    awk '
+      /^[[:alpha:]_][[:alnum:]_]*[[:space:]]*\(\)[[:space:]]*\{/ {
+        name = $0
+        sub(/[[:space:]]*\(\).*/, "", name)
+        if (++definitions[name] > 1) {
+          printf "%s:%d: duplicate top-level function: %s\n", FILENAME, FNR, name
+          duplicate = 1
+        }
+      }
+      END { exit duplicate }
+    ' "$file" || return 1
+  done < <(
+    find "$PROJECT_ROOT"/{bin,lib,modules,scripts} -type f \
+      \( -name '*.sh' -o -path '*/bin/frappe-deployer' \) -print0
+  )
+}
+
 module_contracts() {
   local module count=0
   while IFS= read -r module; do
@@ -42,6 +62,7 @@ cli_version_through_symlink() {
 }
 
 assert_success "all Bash files pass syntax validation" syntax_check
+assert_success "production Bash files have unique top-level function names per file" duplicate_production_functions
 assert_success "all fourteen modules implement the contract" module_contracts
 assert_success "CLI help executes" "${PROJECT_ROOT}/bin/frappe-deployer" help
 assert_success "CLI version executes" "${PROJECT_ROOT}/bin/frappe-deployer" version

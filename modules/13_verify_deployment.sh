@@ -34,12 +34,12 @@ verify_redis_endpoints() {
 }
 
 verify_site() {
-  local apps current_site scheduler_paused
+  local apps default_site scheduler_paused
   [[ -f "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json" ]] || fatal "Site configuration is missing."
   apps="$(runuser --user "$DEFAULT_DEPLOY_USER" -- env --chdir="$BENCH_PATH" "HOME=/home/${DEFAULT_DEPLOY_USER}" "PATH=${BENCH_COMMAND_PATH}" "$BENCH_EXECUTABLE" --site "$SITE_NAME" list-apps 2>/dev/null | sed '/^[[:space:]]*$/d')"
   [[ "$apps" == "frappe" ]] || fatal "Expected only Frappe; found ${apps//$'\n'/, }."
-  current_site="$(tr -d '[:space:]' <"${BENCH_PATH}/sites/currentsite.txt")"
-  [[ "$current_site" == "$SITE_NAME" ]] || fatal "Default site does not match ${SITE_NAME}."
+  default_site="$(bench_default_site)" || fatal "Default site is missing or invalid in sites/common_site_config.json."
+  [[ "$default_site" == "$SITE_NAME" ]] || fatal "Default site does not match ${SITE_NAME}."
   scheduler_paused="$(jq -r '.pause_scheduler // 0' "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json")"
   [[ "$scheduler_paused" == "0" ]] || fatal "Site scheduler is paused."
   run_bench "Verify Frappe database access" --site "$SITE_NAME" execute frappe.get_installed_apps

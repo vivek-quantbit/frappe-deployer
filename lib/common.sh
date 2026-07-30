@@ -190,3 +190,7 @@ run_sensitive_bench() {
     env --chdir="$BENCH_PATH" "HOME=/home/${DEFAULT_DEPLOY_USER}" \
     "PATH=${BENCH_COMMAND_PATH}" "$BENCH_EXECUTABLE" "$@"
 }
+
+bench_default_site() {
+  jq -er '.default_site // empty' "${BENCH_PATH}/sites/common_site_config.json" 2>/dev/null
+}

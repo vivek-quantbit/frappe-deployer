@@ -42,10 +42,11 @@ module_check() {
 }
 
 module_apply() {
-  local source changed=0 backup="" had_existing=0
+  local source changed=0 backup="" had_existing=0 reread_status
   export DEBIAN_FRONTEND=noninteractive
   run_command "Install Supervisor" apt-get install -y --no-install-recommends supervisor
   command -v supervisord >/dev/null 2>&1 && command -v supervisorctl >/dev/null 2>&1 || fatal "Supervisor installation failed."
+  run_command "Enable and start Supervisor" systemctl enable --now supervisor
   run_bench "Generate Supervisor production configuration" setup supervisor
   source="$(supervisor_source_config)"
   [[ -s "$source" ]] || fatal "Bench did not generate Supervisor configuration."
@@ -58,14 +59,16 @@ module_apply() {
   if atomic_install_file "$source" "$SUPERVISOR_CONFIG_TARGET" 0644 root root; then
     changed=1
   fi
-  if ! supervisord -t -c /etc/supervisor/supervisord.conf >>"$LOG_FILE" 2>&1; then
+  if run_command "Validate Supervisor process configuration" supervisorctl reread; then
+    log_success "Supervisor configuration is valid"
+  else
+    reread_status=$?
     if ((had_existing)); then cp -a "$backup" "$SUPERVISOR_CONFIG_TARGET"; else rm -f -- "$SUPERVISOR_CONFIG_TARGET"; fi
-    fatal "Supervisor rejected the generated configuration; the previous configuration was restored."
+    run_command "Restore Supervisor process configuration view" supervisorctl reread || true
+    log_error "Supervisor rejected the generated configuration (reread exit ${reread_status}); the previous configuration was restored."
+    return "$reread_status"
   fi
-  log_success "Supervisor configuration is valid"
-  run_command "Enable and start Supervisor" systemctl enable --now supervisor
   if ((changed)); then
-    run_command "Discover Supervisor process changes" supervisorctl reread
     run_command "Apply Supervisor process changes" supervisorctl update
   fi
   wait_for_managed_processes || fatal "One or more Frappe Supervisor processes failed to reach RUNNING state."

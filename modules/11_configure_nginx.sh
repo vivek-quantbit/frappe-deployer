@@ -25,7 +25,7 @@ module_check() {
 
 module_apply() {
   local source changed=0 default_link="/etc/nginx/sites-enabled/default" backup="" had_existing=0
-  run_bench "Generate Nginx production configuration" setup nginx
+  run_bench "Generate Nginx production configuration" setup nginx --yes
   source="$(nginx_source_config)"
   [[ -s "$source" ]] || fatal "Bench did not generate Nginx configuration."
   if [[ -f "$NGINX_CONFIG_TARGET" ]]; then

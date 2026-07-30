@@ -16,8 +16,7 @@ module_check() {
   site_exists || return 1
   [[ "$(site_count)" == "1" ]] || fatal "Phase 1 requires exactly one site in the bench."
   [[ "$(site_apps)" == "frappe" ]] || fatal "The existing site contains unexpected applications."
-  [[ -f "${BENCH_PATH}/sites/currentsite.txt" ]] || return 1
-  [[ "$(tr -d '[:space:]' <"${BENCH_PATH}/sites/currentsite.txt")" == "$SITE_NAME" ]] || return 1
+  [[ "$(bench_default_site)" == "$SITE_NAME" ]] || return 1
   [[ "$(jq -r '.time_zone // empty' "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json")" == "$TIMEZONE" ]]
 }
 
@@ -35,13 +34,13 @@ module_apply() {
 }
 
 module_verify() {
-  local apps configured_timezone current_site
+  local apps configured_timezone default_site
   site_exists || fatal "Site configuration was not created."
   [[ "$(site_count)" == "1" ]] || fatal "Expected exactly one site."
   apps="$(site_apps)"
   [[ "$apps" == "frappe" ]] || fatal "Expected only Frappe on the site; found: ${apps//$'\n'/, }"
   configured_timezone="$(jq -r '.time_zone // empty' "${BENCH_PATH}/sites/${SITE_NAME}/site_config.json")"
   [[ "$configured_timezone" == "$TIMEZONE" ]] || fatal "Site timezone is not configured correctly."
-  current_site="$(tr -d '[:space:]' <"${BENCH_PATH}/sites/currentsite.txt")"
-  [[ "$current_site" == "$SITE_NAME" ]] || fatal "Default site is ${current_site}, expected ${SITE_NAME}."
+  default_site="$(bench_default_site)" || fatal "Default site is missing or invalid in sites/common_site_config.json; expected ${SITE_NAME}."
+  [[ "$default_site" == "$SITE_NAME" ]] || fatal "Default site is ${default_site}, expected ${SITE_NAME}."
 }

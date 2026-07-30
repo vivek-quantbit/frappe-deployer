@@ -11,6 +11,26 @@ syntax_check() {
   )
 }
 
+duplicate_production_functions() {
+  local file
+  while IFS= read -r -d '' file; do
+    awk '
+      /^[[:alpha:]_][[:alnum:]_]*[[:space:]]*\(\)[[:space:]]*\{/ {
+        name = $0
+        sub(/[[:space:]]*\(\).*/, "", name)
+        if (++definitions[name] > 1) {
+          printf "%s:%d: duplicate top-level function: %s\n", FILENAME, FNR, name
+          duplicate = 1
+        }
+      }
+      END { exit duplicate }
+    ' "$file" || return 1
+  done < <(
+    find "$PROJECT_ROOT"/{bin,lib,modules,scripts} -type f \
+      \( -name '*.sh' -o -path '*/bin/frappe-deployer' \) -print0
+  )
+}
+
 module_contracts() {
   local module count=0
   while IFS= read -r module; do
@@ -42,6 +62,7 @@ cli_version_through_symlink() {
 }
 
 assert_success "all Bash files pass syntax validation" syntax_check
+assert_success "production Bash files have unique top-level function names per file" duplicate_production_functions
 assert_success "all fourteen modules implement the contract" module_contracts
 assert_success "CLI help executes" "${PROJECT_ROOT}/bin/frappe-deployer" help
 assert_success "CLI version executes" "${PROJECT_ROOT}/bin/frappe-deployer" version
@@ -51,6 +72,8 @@ assert_success "Supervisor generation is non-interactive" grep -Eq 'setup superv
 assert_success "Nginx generation is non-interactive" grep -Eq 'setup nginx --yes' "${PROJECT_ROOT}/modules/11_configure_nginx.sh"
 assert_failure "interactive Supervisor or Nginx setup is absent" grep -RPn 'setup (supervisor|nginx)(?! --yes)' "${PROJECT_ROOT}/modules"
 assert_success "Bench commands receive no interactive stdin" grep -q '"$BENCH_EXECUTABLE" "$@" </dev/null' "${PROJECT_ROOT}/lib/common.sh"
+assert_failure "production Redis CLI calls avoid unsupported long host and port options" \
+  rg -n 'redis-cli[^#]*(--host|--port)' "${PROJECT_ROOT}"/{bin,lib,modules,scripts}
 
 if command -v shellcheck >/dev/null 2>&1; then
   assert_success "ShellCheck passes" shellcheck_all

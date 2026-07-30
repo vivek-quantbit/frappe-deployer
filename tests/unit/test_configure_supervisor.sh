@@ -48,7 +48,8 @@ exercise_supervisor_apply() {
 success_root="$(mktemp -d)"
 existing_failure_root="$(mktemp -d)"
 new_failure_root="$(mktemp -d)"
-trap 'rm -rf -- "$success_root" "$existing_failure_root" "$new_failure_root"' EXIT
+redis_root="$(mktemp -d)"
+trap 'rm -rf -- "$success_root" "$existing_failure_root" "$new_failure_root" "$redis_root"' EXIT
 
 assert_success "valid Supervisor configuration is applied" exercise_supervisor_apply "$success_root" 0
 assert_success "Supervisor starts before reread" awk '/Enable and start Supervisor/{started=1} /Validate Supervisor process configuration/{exit !started}' "$success_root/calls"
@@ -68,5 +69,61 @@ assert_failure "failed reread rejects a new target" exercise_supervisor_apply "$
 assert_failure "failed reread removes a new target" test -e "$new_failure_root/frappe.conf"
 assert_equal "new-target rollback performs a second reread" 2 "$(<"$new_failure_root/reread-count")"
 assert_failure "new-target failed validation never runs update" grep -q 'Apply Supervisor process changes' "$new_failure_root/calls"
+
+exercise_process_recovery() {
+  local status_output="${1:?status output required}" failure_process="${2-}"
+  BENCH_NAME=production
+  IFS=$'\n\t'
+  : >"$success_root/recovery-calls"
+  managed_supervisor_processes() { printf '%s\n' "$status_output"; }
+  run_command() {
+    local description="$1"
+    shift
+    printf '%s\t%s\t%s\t%s\t%s\n' "$#" "$description" "${1-}" "${2-}" "${3-}" >>"$success_root/recovery-calls"
+    [[ "${3-}" != "$failure_process" ]]
+  }
+  recover_managed_processes
+}
+
+recovery_statuses=$'production:web\tRUNNING\nproduction:worker\tFATAL'
+assert_success "strict IFS recovery parses tab-delimited process states" exercise_process_recovery "$recovery_statuses"
+assert_success "Supervisor receives one quoted process name per recovery command" awk -F '\t' '$1 != 3 || $3 != "supervisorctl" || $5 !~ /^production:/ {bad=1} END {exit bad}' "$success_root/recovery-calls"
+assert_failure "RUNNING is never passed as a Supervisor process argument" awk -F '\t' '$5 == "RUNNING" {found=1} END {exit !found}' "$success_root/recovery-calls"
+assert_failure "FATAL is never passed as a Supervisor process argument" awk -F '\t' '$5 == "FATAL" {found=1} END {exit !found}' "$success_root/recovery-calls"
+assert_success "FATAL process recovery uses start" awk -F '\t' '$4 == "start" && $5 == "production:worker" {found=1} END {exit !found}' "$success_root/recovery-calls"
+assert_success "RUNNING process recovery uses restart" awk -F '\t' '$4 == "restart" && $5 == "production:web" {found=1} END {exit !found}' "$success_root/recovery-calls"
+assert_failure "malformed managed process names are rejected" exercise_process_recovery $'production:bad name\tFATAL'
+assert_failure "unrelated process names are rejected by recovery" exercise_process_recovery $'other-production:worker\tFATAL'
+assert_failure "Supervisor recovery command failures propagate" exercise_process_recovery $'production:worker\tFATAL' 'production:worker'
+
+exercise_redis_ping() {
+  local response="${1:?response required}" cache_port="${2-13000}" queue_port="${3-11000}"
+  BENCH_PATH="${redis_root}/bench"
+  REDIS_CALLS_FILE="${redis_root}/redis-calls"
+  REDIS_RESPONSE="$response"
+  export REDIS_CALLS_FILE REDIS_RESPONSE
+  mkdir -p "${BENCH_PATH}/config" "${redis_root}/bin"
+  : >"$REDIS_CALLS_FILE"
+  printf 'port %s\n' "$cache_port" >"${BENCH_PATH}/config/redis_cache.conf"
+  printf 'port %s\n' "$queue_port" >"${BENCH_PATH}/config/redis_queue.conf"
+  cat >"${redis_root}/bin/redis-cli" <<'EOF'
+#!/usr/bin/env bash
+[[ "$#" == 5 && "$1" == -h && "$2" == 127.0.0.1 && "$3" == -p && "$4" =~ ^[0-9]+$ && "$5" == ping ]] || exit 64
+printf '%s\n' "$4" >>"$REDIS_CALLS_FILE"
+printf '%s\n' "$REDIS_RESPONSE"
+EOF
+  chmod +x "${redis_root}/bin/redis-cli"
+  PATH="${redis_root}/bin:${PATH}"
+  redis_config_files() {
+    find "${BENCH_PATH}/config" -maxdepth 1 -type f -name 'redis_*.conf' -print | sort
+  }
+  ping_bench_redis
+}
+
+assert_success "Redis PING uses supported short CLI options and accepts PONG" exercise_redis_ping PONG
+assert_equal "Redis PING checks cache and queue endpoints" $'11000\n13000' "$(sort -n "$redis_root/redis-calls")"
+assert_failure "Redis PING rejects a non-PONG response" exercise_redis_ping NOAUTH
+assert_failure "Redis PING rejects a non-numeric port" exercise_redis_ping PONG invalid 11000
+assert_failure "Redis PING rejects a missing port" exercise_redis_ping PONG '' 11000
 
 finish_tests

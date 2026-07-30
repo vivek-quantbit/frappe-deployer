@@ -25,7 +25,7 @@ verify_redis_endpoints() {
     bind="$(awk '$1 == "bind" {print $2; exit}' "$config")"
     port="$(awk '$1 == "port" {print $2; exit}' "$config")"
     [[ "$bind" == "127.0.0.1" || "$bind" == "localhost" ]] || fatal "Redis is not bound locally: ${config}"
-    response="$(redis-cli --host 127.0.0.1 --port "$port" ping 2>/dev/null)"
+    response="$(redis-cli -h 127.0.0.1 -p "$port" ping 2>/dev/null)"
     [[ "$response" == "PONG" ]] || fatal "Redis endpoint 127.0.0.1:${port} did not respond."
     ss -Hln "sport = :${port}" | grep -qE '127\.0\.0\.1|\[::1\]' || fatal "Redis port ${port} is not listening locally."
   done < <(find "${BENCH_PATH}/config" -maxdepth 1 -type f -name 'redis_*.conf' -print | sort)

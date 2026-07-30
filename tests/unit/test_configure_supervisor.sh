@@ -48,7 +48,8 @@ exercise_supervisor_apply() {
 success_root="$(mktemp -d)"
 existing_failure_root="$(mktemp -d)"
 new_failure_root="$(mktemp -d)"
-trap 'rm -rf -- "$success_root" "$existing_failure_root" "$new_failure_root"' EXIT
+redis_root="$(mktemp -d)"
+trap 'rm -rf -- "$success_root" "$existing_failure_root" "$new_failure_root" "$redis_root"' EXIT
 
 assert_success "valid Supervisor configuration is applied" exercise_supervisor_apply "$success_root" 0
 assert_success "Supervisor starts before reread" awk '/Enable and start Supervisor/{started=1} /Validate Supervisor process configuration/{exit !started}' "$success_root/calls"
@@ -94,5 +95,35 @@ assert_success "RUNNING process recovery uses restart" awk -F '\t' '$4 == "resta
 assert_failure "malformed managed process names are rejected" exercise_process_recovery $'production:bad name\tFATAL'
 assert_failure "unrelated process names are rejected by recovery" exercise_process_recovery $'other-production:worker\tFATAL'
 assert_failure "Supervisor recovery command failures propagate" exercise_process_recovery $'production:worker\tFATAL' 'production:worker'
+
+exercise_redis_ping() {
+  local response="${1:?response required}" cache_port="${2-13000}" queue_port="${3-11000}"
+  BENCH_PATH="${redis_root}/bench"
+  REDIS_CALLS_FILE="${redis_root}/redis-calls"
+  REDIS_RESPONSE="$response"
+  export REDIS_CALLS_FILE REDIS_RESPONSE
+  mkdir -p "${BENCH_PATH}/config" "${redis_root}/bin"
+  : >"$REDIS_CALLS_FILE"
+  printf 'port %s\n' "$cache_port" >"${BENCH_PATH}/config/redis_cache.conf"
+  printf 'port %s\n' "$queue_port" >"${BENCH_PATH}/config/redis_queue.conf"
+  cat >"${redis_root}/bin/redis-cli" <<'EOF'
+#!/usr/bin/env bash
+[[ "$#" == 5 && "$1" == -h && "$2" == 127.0.0.1 && "$3" == -p && "$4" =~ ^[0-9]+$ && "$5" == ping ]] || exit 64
+printf '%s\n' "$4" >>"$REDIS_CALLS_FILE"
+printf '%s\n' "$REDIS_RESPONSE"
+EOF
+  chmod +x "${redis_root}/bin/redis-cli"
+  PATH="${redis_root}/bin:${PATH}"
+  redis_config_files() {
+    find "${BENCH_PATH}/config" -maxdepth 1 -type f -name 'redis_*.conf' -print | sort
+  }
+  ping_bench_redis
+}
+
+assert_success "Redis PING uses supported short CLI options and accepts PONG" exercise_redis_ping PONG
+assert_equal "Redis PING checks cache and queue endpoints" $'11000\n13000' "$(sort -n "$redis_root/redis-calls")"
+assert_failure "Redis PING rejects a non-PONG response" exercise_redis_ping NOAUTH
+assert_failure "Redis PING rejects a non-numeric port" exercise_redis_ping PONG invalid 11000
+assert_failure "Redis PING rejects a missing port" exercise_redis_ping PONG '' 11000
 
 finish_tests

@@ -72,6 +72,8 @@ assert_success "Supervisor generation is non-interactive" grep -Eq 'setup superv
 assert_success "Nginx generation is non-interactive" grep -Eq 'setup nginx --yes' "${PROJECT_ROOT}/modules/11_configure_nginx.sh"
 assert_failure "interactive Supervisor or Nginx setup is absent" grep -RPn 'setup (supervisor|nginx)(?! --yes)' "${PROJECT_ROOT}/modules"
 assert_success "Bench commands receive no interactive stdin" grep -q '"$BENCH_EXECUTABLE" "$@" </dev/null' "${PROJECT_ROOT}/lib/common.sh"
+assert_failure "production Redis CLI calls avoid unsupported long host and port options" \
+  rg -n 'redis-cli[^#]*(--host|--port)' "${PROJECT_ROOT}"/{bin,lib,modules,scripts}
 
 if command -v shellcheck >/dev/null 2>&1; then
   assert_success "ShellCheck passes" shellcheck_all

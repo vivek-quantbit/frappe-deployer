@@ -51,7 +51,7 @@ ping_bench_redis() {
   while IFS= read -r config; do
     port="$(awk '$1 == "port" {print $2; exit}' "$config")"
     [[ "$port" =~ ^[0-9]+$ ]] || return 1
-    response="$(redis-cli --host 127.0.0.1 --port "$port" ping 2>/dev/null)"
+    response="$(redis-cli -h 127.0.0.1 -p "$port" ping 2>/dev/null)"
     [[ "$response" == "PONG" ]] || return 1
   done < <(redis_config_files)
 }
